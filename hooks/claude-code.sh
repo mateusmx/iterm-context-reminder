@@ -3,7 +3,8 @@
 # Reads the user's prompt from stdin JSON, summarizes it,
 # and writes context to a per-TTY file for iTerm2 status bar display.
 
-set -euo pipefail
+# Ensure we never block the prompt — always exit 0
+trap 'exit 0' ERR
 
 # --- Read hook input from stdin ---
 INPUT=$(cat)
@@ -39,7 +40,7 @@ summarize() {
   text=$(echo "$text" | sed '/^```/,/^```/d')
 
   # 2. Strip URLs longer than 40 chars
-  text=$(echo "$text" | sed -E 's|https?://[^ ]{40,}||g')
+  text=$(echo "$text" | sed -E 's|https?://[^ ]{41,}||g')
 
   # 3. Strip lines that look like file content
   #    - Indented 4+ spaces
