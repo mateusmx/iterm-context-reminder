@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # iterm-context-reminder: Claude Code UserPromptSubmit hook
 # Reads the user's prompt from stdin JSON, summarizes it,
-# and writes context to a per-TTY file for iTerm2 status bar display.
+# and updates iTerm2's status bar via escape sequences.
 
 # Ensure we never block the prompt — always exit 0
 trap 'exit 0' ERR
@@ -12,7 +12,7 @@ INPUT=$(cat)
 PROMPT=$(echo "$INPUT" | jq -r '.prompt // empty')
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 
-# Exit silently if no prompt (shouldn't happen, but be safe)
+# Exit silently if no prompt
 if [[ -z "$PROMPT" ]]; then
   exit 0
 fi
@@ -31,8 +31,8 @@ _resolve_tty() {
   while [[ -n "$pid" && "$pid" != "0" ]]; do
     tty_short=$(ps -o tty= -p "$pid" 2>/dev/null | xargs)
     if [[ -n "$tty_short" && "$tty_short" != "??" ]]; then
-      # ps gives short form like "s003", full device is /dev/ttys003
-      echo "/dev/tty${tty_short}"
+      # ps -o tty= returns "ttys003" on macOS (already includes "tty" prefix)
+      echo "/dev/${tty_short}"
       return
     fi
     pid=$(ps -o ppid= -p "$pid" 2>/dev/null | xargs)
@@ -85,7 +85,7 @@ summarize() {
 
 INSTRUCTION=$(summarize "$PROMPT")
 
-# --- Write context file ---
+# --- Write context file (for precmd fallback and other tools) ---
 CONTEXT_FILE="/tmp/iterm_context_${TTY_ID}.txt"
 
 cat > "$CONTEXT_FILE" <<EOF
