@@ -22,15 +22,29 @@ if [[ -z "$CWD" ]]; then
   CWD="$PWD"
 fi
 
-# --- Resolve TTY ID ---
-TTY_ID=$(tty 2>/dev/null | tr '/' '_' || echo "unknown")
-if [[ "$TTY_ID" == "unknown" || "$TTY_ID" == "not_a_tty" ]]; then
-  # Try parent process TTY
-  TTY_ID=$(ps -o tty= -p $PPID 2>/dev/null | tr '/' '_' | xargs || echo "unknown")
-fi
-if [[ "$TTY_ID" == "unknown" || -z "$TTY_ID" ]]; then
+# --- Resolve TTY device ---
+# The hook runs as a subprocess, so `tty` won't work.
+# Walk up the process tree to find the controlling TTY.
+_resolve_tty() {
+  local pid=$$
+  local tty_short=""
+  while [[ -n "$pid" && "$pid" != "0" ]]; do
+    tty_short=$(ps -o tty= -p "$pid" 2>/dev/null | xargs)
+    if [[ -n "$tty_short" && "$tty_short" != "??" ]]; then
+      # ps gives short form like "s003", full device is /dev/ttys003
+      echo "/dev/tty${tty_short}"
+      return
+    fi
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | xargs)
+  done
+  echo ""
+}
+
+TTY_DEVICE=$(_resolve_tty)
+if [[ -z "$TTY_DEVICE" || ! -e "$TTY_DEVICE" ]]; then
   exit 0
 fi
+TTY_ID=$(echo "$TTY_DEVICE" | tr '/' '_')
 
 # --- Summarization heuristic ---
 summarize() {
@@ -80,5 +94,13 @@ instruction=${INSTRUCTION}
 tool=claude-code
 timestamp=$(date +%s)
 EOF
+
+# --- Update iTerm2 status bar immediately ---
+# Write escape sequences directly to the TTY device so the status bar
+# updates while Claude Code is running (precmd won't fire until you exit).
+if [[ -w "$TTY_DEVICE" ]]; then
+  printf "\033]1337;SetUserVar=%s=%s\007" "contextPwd" "$(printf '%s' "$CWD" | base64)" > "$TTY_DEVICE"
+  printf "\033]1337;SetUserVar=%s=%s\007" "lastInstruction" "$(printf '%s' "$INSTRUCTION" | base64)" > "$TTY_DEVICE"
+fi
 
 exit 0
